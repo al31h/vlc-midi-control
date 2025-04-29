@@ -52,9 +52,6 @@ def read_setlist(file_name):
                     print(f"Error at line {index + 1}: Missing string value ({line})")
                     continue
 
-
-                print(f"Line '{line}' contains {len(elements)} elements")
-
                 # Extract the mandatory string
                 media_name = elements[0]
 
@@ -108,9 +105,36 @@ def read_setlist(file_name):
         print(f"Error reading the Setlist file: {e}")
         return []
 
+def resolve_file_path(setlist_table, default_path, default_ext): 
+    resolved_setlist = []
+    for media in setlist_table:
+        media_index = media[0]
+        media_name = media[1]
+        media_playrate = media[2]
+        media_start = media[3]
+        media_end = media[4]
+        
+        test_filename_has_fullpath, test_filename_has_extension
+        # check if the media filename has an extension. If not, add the defautl extension if defined, otherwise, do nothing
+        if not test_filename_has_extension(media_name):
+            if default_ext:
+                if not default_ext.startswith('.'):
+                    media_name = media_name + '.'
+                media_name = media_name + default_ext
+    
+        # check if the media filename is absolute (has a full path)
+        if not test_filename_has_fullpath(media_name):
+            if default_path:
+                media_name = os.path.join(default_path, media_name)
+                
+        # print(f"index = {media_index} - name = {media_name} - rate = {media_playrate} - start at {media_start} - end at {media_end}")
+        resolved_setlist.append([media_index, media_name, media_playrate, media_start, media_end])
+        
+    return resolved_setlist
 
-
-
+# =============================================================================
+# Misc functions to check if folders and files exist
+# =============================================================================
 def check_directory(path):
     """
     Checks if a directory exists.
@@ -148,13 +172,30 @@ def check_file_exists(fullpath):
 def check_file_in_path(path, filename):
     fullpath = os.path.join(path, filename)
     return check_file_exists(fullpath)
+
+def test_filename_has_fullpath(filename):
+    return os.path.isabs(filename)
     
-def get_inputport_table(verbose):
+def test_filename_has_extension(filename):
+    return bool(os.path.splitext(filename)[1])
+    
+# =============================================================================
+# To have a clean output in case of invalid command line option. The online help is displayed with a message indicating which parameter is wrong
+# =============================================================================
+class CustomArgumentParser(argparse.ArgumentParser):
+    def error(self, message):
+        print(f"Invalid command line options : {message}\n")
+        self.print_help()
+        sys.exit(2)
+
+# =============================================================================
+# MIDI Interface utilities
+# =============================================================================
+def get_inputport_table(midi_input_ports, verbose):
     
     result = []
-    midi_ports = rtmidi.MidiIn()
         
-    ports = midi_ports.get_ports()
+    ports = midi_input_ports.get_ports()
     if not ports:
         if verbose:
             print("No available MIDI ports")
@@ -185,9 +226,7 @@ def list_midi_input_ports():
     """
     Lists available MIDI input ports.
     """
-    midi_in_ports = rtmidi.MidiIn()
-
-    ports = midi_in_ports.get_ports()
+    ports = midi_input_ports.get_ports()
     if not ports:
         print("No available MIDI Input ports.")
     else:
@@ -200,9 +239,7 @@ def check_midi_input_port(input_port, verbose):
     """
     Lists available MIDI input ports.
     """
-    midi_in_ports = rtmidi.MidiIn()
-
-    ports = midi_in_ports.get_ports()
+    ports = midi_input_ports.get_ports()
     if not ports:
         print("No available MIDI Input ports.")
         return False
@@ -214,6 +251,117 @@ def check_midi_input_port(input_port, verbose):
             print(f"Using MIDI port: {ports[1]}")
         return True
 
+# =============================================================================
+# Interface with VLC
+# vlc_create_instance
+# vlc_kill_all_instances
+# vlc_load_media_in_instance
+# vlc_play_instance
+# vlc_pause_instance
+# vlc_stop_instance
+# =============================================================================
+vlc_players = []
+
+def vlc_create_instance(verbose = False):
+    try:
+        vlc_instance = vlc.Instance()
+        mediaplayer = vlc_instance.MediaPlayer()
+        time.sleep(0.5)
+    
+        vlc_players.append([mediaplayer, player])
+        return len(vlc_players)-1
+        
+    except Exception as e:
+        if verbose:
+            print(f"vlc_create_instance: {e}")
+        return -1
+
+def vlc_kill_all_instances(verbose = False):
+    try:
+        n = 0
+        for vlc_instance in vlc_players:
+            print(f"Killing instance {n+1}")
+            n += 1
+
+        return True
+        
+    except Exception as e:
+        if verbose:
+            print(f"vlc_kill_all_instances: {e}")
+        return False
+
+def vlc_load_media_in_instance(player_index, media_desc, verbose = False):
+    # The instance index is the value returned by vlc_create_instance
+    # The media_desc is the structure made of [index, media file name, play rate, start, end]
+    if player_index >= 0 and media:
+        instance = vlc_players[player_index]
+        mediaplayer = instance[0]
+        player = instance[1]
+
+        try:
+            media = mediaplayer.media_new(media_desc[1])
+            player.set_media(media)
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"vlc_load_media_in_instance: {e}")
+            return False
+    else:
+        return False
+
+def vlc_play_instance(player_index, verbose = False):
+    if player_index >= 0:
+        instance = vlc_players[player_index]
+        mediaplayer = instance[0]
+        player = instance[1]
+
+        try:
+            player.play()
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"vlc_play_instance: {e}")
+            return False
+    else:
+        return False
+            
+def vlc_pause_instance(player_index, verbose = False):
+    if player_index >= 0:
+        instance = vlc_players[player_index]
+        mediaplayer = instance[0]
+        player = instance[1]
+
+        try:
+            player.pause()
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"vlc_pause_instance: {e}")
+            return False
+    else:
+        return False
+
+def vlc_stop_instance(player_index, verbose = False):
+    if player_index >= 0:
+        instance = vlc_players[player_index]
+        mediaplayer = instance[0]
+        player = instance[1]
+
+        try:
+            player.stop()
+            return True
+        except Exception as e:
+            if verbose:
+                print(f"vlc_stop_instance: {e}")
+            return False
+    else:
+        return False
+        
+        
+    
+# =============================================================================
+# Interface with LivePrompter
+# =============================================================================
 def handle_live_prompter(liveprompter_path, setlist_name):
     """
     Handles the live prompt scenario where a specific setlist is required.
@@ -232,11 +380,17 @@ def handle_live_prompter(liveprompter_path, setlist_name):
     print(f"Using setlist: {setlist_name}")
     return True
 
+
+# =============================================================================
+# MAIN (INIT THEN LOOP UNTIL KEYBOARD INTERRUPTION)
+# =============================================================================
 def main():
+    
     # =============================================================================
     # Argument Parsing (Command-line Options)
     # =============================================================================
-    parser = argparse.ArgumentParser(description="Read a data file and display it as a table.")
+    # parser = argparse.ArgumentParser(description="Read a data file and display it as a table.")
+    parser = CustomArgumentParser(description="Control the VLC player with MIDI commands, to play backing tracks or videos.")
     
     # Option to use a cofniguration file
     parser.add_argument('-c', '--config', help="Filename of the configuration file")
@@ -306,7 +460,8 @@ def main():
     # List MIDI ports if the option is specified
     # Option treated first, to exist the program after displaying the list of available ports
     # =============================================================================
-    inputports_table = get_inputport_table(verbose)
+    midi_input_ports = rtmidi.MidiIn()
+    inputports_table = get_inputport_table(midi_input_ports, verbose) # used later to open the port
     
     if args.midiports:
         if inputports_table:
@@ -343,26 +498,10 @@ def main():
     # =============================================================================
     # Display the provided extension (if any)
     # =============================================================================
-    if args.extension:
+    if args.extension and verbose:
         print(f"Extension provided: {args.extension}")
 
 
-
-    # =============================================================================
-    # Handle MIDI Input Port
-    # =============================================================================
-    midi_input_portname = args.input  # Store the MIDI input port number if provided
-    if midi_input_portname is None:
-        midi_input_portname = ""
-        
-    portid = get_portid_by_name(midi_input_portname, inputports_table, verbose)
-    if portid == -1:
-        print(f"MIDI port {midi_input_portname} not found. Program stopped.")
-        exit(1)
-        
-    print(f"MIDI port selected: {portid}")
-
-    # check that the port is available
 
     # =============================================================================
     # Handle Live Prompter Mode
@@ -389,22 +528,205 @@ def main():
     # =============================================================================
     # Build the playlist, based on the set list provided by option --setlist
     # =============================================================================
+    raw_setlist = []
     if args.setlist:
         # Calculate the file's directory path and the file name
         setlist_directory_path = os.path.abspath(os.path.dirname(args.setlist))  # The directory containing the file
         setlist_filename = os.path.basename(args.setlist)  # The file's name (with extension)
 
-        print(f"File path: {setlist_directory_path}")
-        print(f"File name: {setlist_filename}")
+        raw_setlist = read_setlist(args.setlist)
 
-        results = read_setlist(args.setlist)
 
-        # Display the results in verbose mode if enabled
+        
+    # =============================================================================
+    # Finalize the setlist by resolving missing path and file extension
+    # =============================================================================
+    if not raw_setlist:
+        print(f"Error: Empty setlist. Program stopped.")
+        exit(2)
+
+    resolved_setlist = resolve_file_path(raw_setlist, args.path, args.extension)
+
+    if not resolved_setlist:
+        print(f"Error: Empty setlist. Program stopped.")
+        exit(2)
+        
+    # check if all media file exist
+    disperror = False
+    for media in resolved_setlist:
+        filename = media[1]
+        fileok = check_file_exists(filename)
+        if not fileok:
+            disperror = True
+        if disperror:
+            print(f"Error: Media {filename} not found.")
+    if disperror:
+        print(f"Error: At least 1 media file could not be found. Program stopped.")
+        print(f"Check the setlist and path specified in the configuration file.")
+        exit(2)
+        
+    # Display the results in verbose mode if enabled
+    if verbose:
+        print("Displaying setlist content in verbose mode:")
+        for row in resolved_setlist:
+            print(row)
+
+
+    # =============================================================================
+    # Load the Playlist in VLC
+    # vlc_create_instance
+    # vlc_kill_all_instances
+    # vlc_load_media_in_instance
+    # vlc_play_instance
+    # vlc_pause_instance
+    # vlc_stop_instance
+    # =============================================================================
+    # creating a vlc instance
+    #vlc_player_main = vlc_create_instance(verbose)
+    #if vlc_player_main < 0:
+    #    print(f"Error: Unable to launch the main VLC instance. Program Stopped.")
+    #    exit(2)
+        
+    # launch the second VLC instance for the click
+
+    # =============================================================================
+    # Handle MIDI Input Port
+    # =============================================================================
+    midi_input_portname = ""  # TODO : get_from_configfile
+    if args.input:
+        midi_input_portname = args.input  # Store the MIDI input port number if provided
+
+
+    # END OF INIT - REAL-TIME PART
+    
+
+    # =============================================================================
+    # Open VLC instances
+    # =============================================================================
+    vlc_instance_main = vlc.Instance()
+    vlc_player_click = None
+    vlc_player_video = None
+    
+    time.sleep(0.5)
+    player_main = vlc_instance_main.media_player_new()
+
+
+
+
+
+
+
+    # =============================================================================
+    # Open the MIDI Input Port
+    # =============================================================================
+    portid = get_portid_by_name(midi_input_portname, inputports_table, verbose)
+    if portid == -1:
+        print(f"MIDI port {midi_input_portname} not found. Program stopped.")
+        exit(1)
+        
+    if verbose:
+        print(f"MIDI port selected: {portid}")
+        
+    # open the MIDI Input Port
+    try:
+        selected_midi_input_port = midi_input_ports.open_port(portid)
+    except Exception as e:
         if verbose:
-            print("Displaying file content in verbose mode:")
-            for row in results:
-                print(row)
+            print(f"Unable to open the selected MIDI Input Port {midi_input_portname}: {e}. Program stopped.")
+        exit(2)
+    
+    # load a media for tests
+    
+    PLAYPAUSE_MODE_PLAYONLY = 0   # distinct command for pause
+    PLAYPAUSE_MODE_TOGGLE = 1     # case of play/pause button in LivePrompter
+    cmd_playpause_mode = PLAYPAUSE_MODE_TOGGLE
+    
+    PLAYPAUSE_STATUS_PAUSE = 0
+    PLAYPAUSE_STATUS_PLAY = 1
+    cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+    
+    try:
+        while True:
+            while selected_midi_input_port.is_port_open():
+                inmsg = selected_midi_input_port.get_message()
+                if inmsg:
+                    (msg, dt) = inmsg
+                    command = msg[0] & 0xF0
+                    channel = (msg[0] & 0x0F) + 1
+
+                    if verbose:
+                        print(f"Received MIDI message {msg} - Command {hex(command)} on channel {channel}")
+                        
+                    if channel == 2:
+                        
+                        if command == 0xC0:   # Program Change = change media to be played
+                            player_main.stop()
+                            cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+
+                            playlist_index = msg[1]
+                            
+                            if playlist_index >= 0 and playlist_index < len(resolved_setlist):
+                                media_desc = resolved_setlist[playlist_index]
+                                print(f"Info: loading {media_desc[1]}")
+    
+                                media_main = vlc_instance_main.media_new(media_desc[1])
+                                player_main.set_media(media_main)
+                                
+                            else:
+                                print(f"Error: received index {playlist_index} out of range vs the specified set list. Playing nothing.")
+                                
+                            
+                            # by default, the player is not started, waiting for an explicit PLAY commmand
+                            player_main.stop()
+                            cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+                            
+                        elif command == 0xB0: # Control Change = Play / Pause / Stop
+                            transport_cmd = msg[1]
+                            # Play, or play/pause buttton - handle a toggle to be synchronized with LivePromper
+                            if transport_cmd == 2:
+                                if cmd_playpause_mode == PLAYPAUSE_MODE_TOGGLE:
+                                    if cmd_playpause_status == PLAYPAUSE_STATUS_PAUSE:
+                                        player_main.play()
+                                        cmd_playpause_status = PLAYPAUSE_STATUS_PLAY
+                                    else:
+                                        player_main.pause()
+                                        cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+                                else:
+                                    player_main.play()
+                                    cmd_playpause_status = PLAYPAUSE_STATUS_PLAY
+                                    
+                            # Pause button (does not exist in LivePrompter)
+                            elif transport_cmd == 3: 
+                                player_main.pause()
+                                cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+                                
+                            # Reset button stop and be ready to play again from the beginning
+                            elif transport_cmd == 9:
+                                player_main.stop()
+                                cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+
+                            # Button UP in LivePrompter
+                            elif  transport_cmd == 4:
+                                print(f"Received transport command UP - Ignored.")
+                        
+                            # Button DOWN in LivePrompter
+                            elif  transport_cmd == 5:
+                                print(f"Received transport command DOWN - Ignored.")
+                                
+                    
+            time.sleep(0.001)
+            
+    except KeyboardInterrupt:
+        player_main.stop()
+        
+
+
+# =============================================================================
+# __MAIN__ ENTRY POINT
+# =============================================================================
 
 
 if __name__ == "__main__":
+    
     main()
+    
