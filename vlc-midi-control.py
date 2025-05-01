@@ -105,7 +105,24 @@ def read_setlist(file_name):
         print(f"Error reading the Setlist file: {e}")
         return []
 
-def resolve_file_path(setlist_table, default_path, default_ext): 
+def resolve_file_path(filename, default_path, default_ext): 
+    resolved_setlist = []
+
+    # check if the media filename has an extension. If not, add the defautl extension if defined, otherwise, do nothing
+    if not test_filename_has_extension(filename):
+        if default_ext:
+            if not default_ext.startswith('.'):
+                filename = filename + '.'
+            filename = filename + default_ext
+
+    # check if the media filename is absolute (has a full path)
+    if not test_filename_has_fullpath(filename):
+        if default_path:
+            filename = os.path.join(default_path, filename)
+                
+    return filename
+
+def resolve_setlist_files_path(setlist_table, default_path, default_ext): 
     resolved_setlist = []
     for media in setlist_table:
         media_index = media[0]
@@ -113,22 +130,9 @@ def resolve_file_path(setlist_table, default_path, default_ext):
         media_playrate = media[2]
         media_start = media[3]
         media_end = media[4]
-        
-        test_filename_has_fullpath, test_filename_has_extension
-        # check if the media filename has an extension. If not, add the defautl extension if defined, otherwise, do nothing
-        if not test_filename_has_extension(media_name):
-            if default_ext:
-                if not default_ext.startswith('.'):
-                    media_name = media_name + '.'
-                media_name = media_name + default_ext
-    
-        # check if the media filename is absolute (has a full path)
-        if not test_filename_has_fullpath(media_name):
-            if default_path:
-                media_name = os.path.join(default_path, media_name)
                 
         # print(f"index = {media_index} - name = {media_name} - rate = {media_playrate} - start at {media_start} - end at {media_end}")
-        resolved_setlist.append([media_index, media_name, media_playrate, media_start, media_end])
+        resolved_setlist.append([media_index, resolve_file_path(media_name, default_path, default_ext), media_playrate, media_start, media_end])
         
     return resolved_setlist
 
@@ -418,6 +422,12 @@ def main():
     # Option to provide an optional string (extension)
     parser.add_argument('-e', '--extension', help="Default filename extension for media files to play")
 
+    # Option to ignore missing media error (by default, the program checks if media file exist before starting to wait MIDI commands)
+    parser.add_argument('-um', '--ignore-missing-media', action='store_true', help="Unsafe mode - Ignore missing media error - Can lead to uncontroled behavior. DO NOT USE IN LIVE")
+
+    # Option to specify the default media file if a media file could not be found 
+    parser.add_argument('-dm', '--default-missing-media', help="Filename of the media file played if a media file is missing.")
+
     # Option for verbose output
     parser.add_argument('-v', '--verbose', action='store_true', help="Enable verbose output")
     
@@ -455,6 +465,23 @@ def main():
     verbose = args.verbose  # If --verbose is specified, set verbose to True
     if verbose:
         print("Verbose mode enabled.")
+
+    # =============================================================================
+    # Unsafe mode options
+    # um (ignore-missing-media): ignore missing media error
+    # =============================================================================
+    unsafeIgnoreMissingMedia = args.ignore_missing_media  # If --verbose is specified, set verbose to True
+    if unsafeIgnoreMissingMedia:
+        print("WARINING: UNSAFE MODE FOR LIVE - Missing files error is ignored.")
+
+    # =============================================================================
+    # Default media played in case of errors
+    # dm (default-missing-media)
+    # =============================================================================
+    defaultMediaFile = ""
+    if args.default_missing_media:
+        defaultMediaFile = resolve_file_path(args.default_missing_media, args.path, args.extension)
+        # check 
 
     # =============================================================================
     # List MIDI ports if the option is specified
@@ -545,7 +572,7 @@ def main():
         print(f"Error: Empty setlist. Program stopped.")
         exit(2)
 
-    resolved_setlist = resolve_file_path(raw_setlist, args.path, args.extension)
+    resolved_setlist = resolve_setlist_files_path(raw_setlist, args.path, args.extension)
 
     if not resolved_setlist:
         print(f"Error: Empty setlist. Program stopped.")
@@ -553,17 +580,18 @@ def main():
         
     # check if all media file exist
     disperror = False
-    for media in resolved_setlist:
-        filename = media[1]
-        fileok = check_file_exists(filename)
-        if not fileok:
-            disperror = True
+    if not unsafeIgnoreMissingMedia:
+        for media in resolved_setlist:
+            filename = media[1]
+            fileok = check_file_exists(filename)
+            if not fileok:
+                disperror = True
+            if disperror:
+                print(f"Error: Media {filename} not found.")
         if disperror:
-            print(f"Error: Media {filename} not found.")
-    if disperror:
-        print(f"Error: At least 1 media file could not be found. Program stopped.")
-        print(f"Check the setlist and path specified in the configuration file.")
-        exit(2)
+            print(f"Error: At least 1 media file could not be found. Program stopped.")
+            print(f"Check the setlist and path specified in the configuration file.")
+            exit(2)
         
     # Display the results in verbose mode if enabled
     if verbose:
@@ -667,10 +695,20 @@ def main():
                             
                             if playlist_index >= 0 and playlist_index < len(resolved_setlist):
                                 media_desc = resolved_setlist[playlist_index]
-                                print(f"Info: loading {media_desc[1]}")
-    
-                                media_main = vlc_instance_main.media_new(media_desc[1])
-                                player_main.set_media(media_main)
+                                if check_file_exists(media_desc[1]):
+                                    if verbose:
+                                        print(f"Info: loading {media_desc[1]}")
+                                    media_main = vlc_instance_main.media_new(media_desc[1])
+                                    player_main.set_media(media_main)
+                                else:
+                                    if check_file_exists(defaultMediaFile):
+                                        media_main = vlc_instance_main.media_new(defaultMediaFile)
+                                        player_main.set_media(media_main)   
+                                        player_main.play()
+                                        time.sleep(5)
+                                        player_main.stop()
+                                        cmd_playpause_status = PLAYPAUSE_STATUS_PAUSE
+                                        
                                 
                             else:
                                 print(f"Error: received index {playlist_index} out of range vs the specified set list. Playing nothing.")
@@ -714,7 +752,7 @@ def main():
                                 print(f"Received transport command DOWN - Ignored.")
                                 
                     
-            time.sleep(0.001)
+            time.sleep(0.010)
             
     except KeyboardInterrupt:
         player_main.stop()
@@ -729,4 +767,4 @@ def main():
 if __name__ == "__main__":
     
     main()
-    
+
