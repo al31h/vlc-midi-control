@@ -4,6 +4,7 @@ import sys
 import rtmidi
 import vlc
 import time
+from datetime import datetime
 
 # =============================================================================
 # Configuration
@@ -254,6 +255,78 @@ def check_midi_input_port(input_port, verbose):
         if verbose:
             print(f"Using MIDI port: {ports[1]}")
         return True
+
+# =============================================================================
+# MIDI Messages utilities
+# =============================================================================
+# Mapping of MIDI command status bytes (upper nibble)
+MIDI_COMMANDS = {
+    0x80: "Note Off",
+    0x90: "Note On",
+    0xA0: "Polyphonic Key Pressure",
+    0xB0: "Control Change",
+    0xC0: "Program Change",
+    0xD0: "Channel Pressure",
+    0xE0: "Pitch Bend",
+    0xF0: "System Message",
+}
+
+# Note names for converting MIDI note numbers to musical names
+NOTE_NAMES = ['C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#', 'A', 'A#', 'B']
+
+def note_number_to_name(note_number):
+    """Convert MIDI note number to note name (e.g. 60 -> C4)."""
+    name = NOTE_NAMES[note_number % 12]
+    octave = (note_number // 12) - 1
+    return f"{name}{octave}"
+
+def decode_midi_message(message):
+    """Decode a raw MIDI message into human-readable format with parameters."""
+    status = message[0]
+    command = status & 0xF0
+    channel = (status & 0x0F) + 1  # MIDI channels are 1-based
+
+    command_name = MIDI_COMMANDS.get(command, f"Unknown (0x{command:X})")
+    output = f"{command_name} | Channel {channel} | "
+
+    if command in [0x80, 0x90]:  # Note Off / Note On
+        note = message[1]
+        velocity = message[2]
+        note_name = note_number_to_name(note)
+        output += f"Note: {note_name} ({note}) | Velocity: {velocity}"
+
+    elif command == 0xA0:  # Polyphonic Key Pressure
+        note = message[1]
+        pressure = message[2]
+        note_name = note_number_to_name(note)
+        output += f"Note: {note_name} ({note}) | Pressure: {pressure}"
+
+    elif command == 0xB0:  # Control Change
+        controller = message[1]
+        value = message[2]
+        output += f"Controller: {controller} | Value: {value}"
+
+    elif command == 0xC0:  # Program Change
+        program = message[1]
+        output += f"Program: {program}"
+
+    elif command == 0xD0:  # Channel Pressure
+        pressure = message[1]
+        output += f"Pressure: {pressure}"
+
+    elif command == 0xE0:  # Pitch Bend
+        lsb = message[1]
+        msb = message[2]
+        value = (msb << 7) | lsb
+        output += f"Pitch Bend: {value - 8192} (raw: {value})"
+
+    elif command == 0xF0:  # System Messages
+        output += f"Data: {message[1:]}"
+
+    else:
+        output += f"Raw data: {message[1:]}"
+
+    return output
 
 # =============================================================================
 # Interface with VLC
@@ -683,7 +756,9 @@ def main():
                     channel = (msg[0] & 0x0F) + 1
 
                     if verbose:
-                        print(f"Received MIDI message {msg} - Command {hex(command)} on channel {channel}")
+                        timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]  # e.g. 14:52:03.123
+                        print(f"[{timestamp}] MIDI Input: {decode_midi_message(msg)}")
+                        #print(f"Received MIDI message {msg} - Command {hex(command)} on channel {channel}")
                         
                     if channel == 2:
                         
