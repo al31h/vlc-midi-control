@@ -23,6 +23,13 @@ from datetime import datetime
 # (string, integer, time in HH:MM:SS format).
 # =============================================================================
 
+# structure of set list file
+SETLIST_INDEX = 0
+SETLIST_MEDIANAME = 1
+SETLIST_PLAYSPEED = 2
+SETLIST_STARTTIME = 3
+SETLIST_ENDTIME=4
+
 def read_setlist(file_name):
     """
     Function to read a file and load its content into a table. This function works with LivePrompter setlist, or more complete setlists
@@ -49,12 +56,13 @@ def read_setlist(file_name):
                 #else:
                 #    elements = line.split()
 
-                if len(elements) < 1:
-                    print(f"Error at line {index + 1}: Missing string value ({line})")
+                if len(elements) < 2:
+                    print(f"Error at line {index + 1}: Missing mandatory elements Index and Media filename ({line})")
                     continue
 
                 # Extract the mandatory string
-                media_name = elements[0]
+                media_index = int(elements[SETLIST_INDEX])-1
+                media_name = elements[SETLIST_MEDIANAME]
 
                 # Default values for the other fields
                 play_speed = 100
@@ -62,18 +70,18 @@ def read_setlist(file_name):
                 end_time = "99:59:59"
 
                 # Set optional values if they exist in the line
-                if len(elements) > 1:
+                if len(elements) > SETLIST_PLAYSPEED:
                     try:
-                        play_speed = int(elements[1])
+                        play_speed = int(elements[SETLIST_PLAYSPEED])
                     except ValueError:
-                        print(f"Error at line {index + 1}: '{elements[1]}' is not an integer.")
+                        print(f"Error at line {index + 1}: '{elements[SETLIST_PLAYSPEED]}' is not an integer.")
                         continue
 
-                if len(elements) > 2:
-                    start_time = elements[2]
+                if len(elements) > SETLIST_STARTTIME:
+                    start_time = elements[SETLIST_STARTTIME]
 
-                if len(elements) > 3:
-                    end_time = elements[3]
+                if len(elements) > SETLIST_ENDTIME:
+                    end_time = elements[SETLIST_ENDTIME]
 
                 # Validate times (start and end) to be in HH:MM:SS format
                 def validate_time_format(time_str):
@@ -94,8 +102,8 @@ def read_setlist(file_name):
                     print(f"Error at line {index + 1}: Invalid end time format '{end_time}'")
                     continue
 
-                # Append the data (index, string, integer, start time, end time)
-                setlist_table.append([index, media_name, play_speed, start_time, end_time])
+                # Append the data (media_index, string, integer, start time, end time)
+                setlist_table.append([media_index, media_name, play_speed, start_time, end_time])
 
         return setlist_table
 
@@ -134,9 +142,17 @@ def resolve_setlist_files_path(setlist_table, default_path, default_ext):
                 
         # print(f"index = {media_index} - name = {media_name} - rate = {media_playrate} - start at {media_start} - end at {media_end}")
         resolved_setlist.append([media_index, resolve_file_path(media_name, default_path, default_ext), media_playrate, media_start, media_end])
-        
+    
     return resolved_setlist
 
+
+def get_mediadesc_by_index(setlist_table, media_index):
+    for media_desc in setlist_table:
+        if media_desc[SETLIST_INDEX] == media_index:
+            return media_desc
+            
+    return None
+    
 # =============================================================================
 # Misc functions to check if folders and files exist
 # =============================================================================
@@ -769,8 +785,9 @@ def main():
                             playlist_index = msg[1]
                             
                             if playlist_index >= 0 and playlist_index < len(resolved_setlist):
-                                media_desc = resolved_setlist[playlist_index]
-                                if check_file_exists(media_desc[1]):
+                                media_desc = get_mediadesc_by_index(resolved_setlist, playlist_index)
+                                print(f"media_desc = {media_desc}")
+                                if media_desc and check_file_exists(media_desc[1]):
                                     if verbose:
                                         print(f"Info: loading {media_desc[1]}")
                                     media_main = vlc_instance_main.media_new(media_desc[1])
