@@ -492,7 +492,10 @@ def main():
     parser.add_argument('-m', '--midiports', action='store_true', help="List available MIDI ports")
     
     # Option to specify MIDI input port number
-    parser.add_argument('-i', '--input', help="MIDI input port name to use for receiving commands")
+    parser.add_argument('-i', '--midi-input', help="MIDI input port name to use for receiving commands")
+    
+    # Option to specify MIDI input port number
+    parser.add_argument('-i', '--midi-channel', help="MIDI channel on which the commands are received")
     
     # Option to specify the set file
     parser.add_argument('-s', '--setlist', required=False, help="Name of the file containing the Set List. The file should have the following structure:\n"
@@ -710,9 +713,14 @@ def main():
     # Handle MIDI Input Port
     # =============================================================================
     midi_input_portname = ""  # TODO : get_from_configfile
-    if args.input:
-        midi_input_portname = args.input  # Store the MIDI input port number if provided
+    if args.midi_input:
+        midi_input_portname = args.midi_input  # Store the MIDI input port number if provided
 
+    if args.midi_channel:
+        midi_channel = args.midi_channel
+    else:
+        print(f"WARNING - Defaulting to use the MIDI channel 0")
+        midi_channel = 0
 
     # END OF INIT - REAL-TIME PART
     
@@ -776,7 +784,7 @@ def main():
                         print(f"[{timestamp}] MIDI Input: {decode_midi_message(msg)}")
                         #print(f"Received MIDI message {msg} - Command {hex(command)} on channel {channel}")
                         
-                    if channel == 2:
+                    if channel == midi_channel:
                         
                         if command == 0xC0:   # Program Change = change media to be played
                             player_main.stop()
