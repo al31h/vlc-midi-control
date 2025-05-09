@@ -489,13 +489,13 @@ def main():
     parser.add_argument('-c', '--config', help="Filename of the configuration file")
     
     # Option to list available MIDI ports
-    parser.add_argument('-m', '--midiports', action='store_true', help="List available MIDI ports")
+    parser.add_argument('-ml', '--midiports', action='store_true', help="List available MIDI ports")
     
     # Option to specify MIDI input port number
-    parser.add_argument('-i', '--midi-input', help="MIDI input port name to use for receiving commands")
+    parser.add_argument('-mi', '--midi-input', help="MIDI input port name to use for receiving commands")
     
     # Option to specify MIDI input port number
-    parser.add_argument('-i', '--midi-channel', help="MIDI channel on which the commands are received")
+    parser.add_argument('-mc', '--midi-channel', help="MIDI channel on which the commands are received")
     
     # Option to specify the set file
     parser.add_argument('-s', '--setlist', required=False, help="Name of the file containing the Set List. The file should have the following structure:\n"
@@ -717,7 +717,7 @@ def main():
         midi_input_portname = args.midi_input  # Store the MIDI input port number if provided
 
     if args.midi_channel:
-        midi_channel = args.midi_channel
+        midi_channel = int(args.midi_channel)
     else:
         print(f"WARNING - Defaulting to use the MIDI channel 0")
         midi_channel = 0
@@ -851,7 +851,8 @@ def main():
                             elif  transport_cmd == 5:
                                 print(f"Received transport command DOWN - Ignored.")
                                 
-                    
+                    else:
+                        print(f"Ignoring MIDI command received on channel {channel} - waiting on channel {midi_channel}")
             time.sleep(0.010)
             
     except KeyboardInterrupt:
