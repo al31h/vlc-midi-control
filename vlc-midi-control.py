@@ -235,13 +235,11 @@ def get_inputport_table(midi_input_ports, verbose):
     return result
     
 def get_portid_by_name(port_name, ports_table, verbose=False):
-    portid = -1
     if port_name != "":
         for port in ports_table:
-            if port[0] == port_name:
-                portid = port[1]
-    
-    return portid
+            if port_name.lower() in port[0].lower():
+                return port[1]
+    return -1
     
 def list_midi_input_ports():
     """
@@ -781,7 +779,7 @@ def main():
 
                     if verbose:
                         timestamp = datetime.now().strftime("%H:%M:%S.%f")[:-3]  # e.g. 14:52:03.123
-                        print(f"[{timestamp}] MIDI Input: {decode_midi_message(msg)}")
+                        #print(f"[{timestamp}] MIDI Input: {decode_midi_message(msg)}")
                         #print(f"Received MIDI message {msg} - Command {hex(command)} on channel {channel}")
                         
                     if channel == midi_channel:
@@ -851,8 +849,8 @@ def main():
                             elif  transport_cmd == 5:
                                 print(f"Received transport command DOWN - Ignored.")
                                 
-                    else:
-                        print(f"Ignoring MIDI command received on channel {channel} - waiting on channel {midi_channel}")
+                    #else:
+                        #print(f"Ignoring MIDI command received on channel {channel} - waiting on channel {midi_channel}")
             time.sleep(0.010)
             
     except KeyboardInterrupt:
